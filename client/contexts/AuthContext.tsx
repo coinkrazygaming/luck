@@ -137,6 +137,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const login = async (credentials: LoginCredentials): Promise<boolean> => {
+    if (!supabase) return false;
+
     setIsLoading(true);
 
     const { data, error } = await supabase.auth.signInWithPassword({
