@@ -225,7 +225,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const updateProfile = async (updates: Partial<User>) => {
-    if (!user) return;
+    if (!user || !supabase) return;
 
     const updateRow: Record<string, any> = {};
     if (updates.name !== undefined) updateRow.name = updates.name;
