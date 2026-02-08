@@ -39,6 +39,14 @@ import {
   getPublicApiDocs,
   getRateLimitStatus,
 } from "./routes/publicApi";
+import {
+  register,
+  login,
+  getSession,
+  logout,
+  updateProfile,
+} from "./routes/auth";
+import { initializeDatabase } from "./lib/db";
 
 export function createServer() {
   const app = express();
