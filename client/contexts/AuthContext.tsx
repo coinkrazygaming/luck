@@ -52,7 +52,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [token, setToken] = useState<string | null>(
-    localStorage.getItem("auth_token")
+    localStorage.getItem("auth_token"),
   );
 
   useEffect(() => {

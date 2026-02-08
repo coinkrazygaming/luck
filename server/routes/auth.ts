@@ -3,7 +3,8 @@ import bcryptjs from "bcryptjs";
 import jwt from "jsonwebtoken";
 import { db } from "../lib/db";
 
-const JWT_SECRET = process.env.JWT_SECRET || "dev-secret-key-change-in-production";
+const JWT_SECRET =
+  process.env.JWT_SECRET || "dev-secret-key-change-in-production";
 
 interface AuthRequest {
   email: string;
@@ -52,7 +53,7 @@ export const register: RequestHandler = async (req, res) => {
 
     const result = await db.query(
       "INSERT INTO users (email, password_hash, name) VALUES ($1, $2, $3) RETURNING id, email, name, is_admin, verified, kyc_status, created_at, last_login_at, total_losses, jackpot_opt_in",
-      [email, hashedPassword, name || ""]
+      [email, hashedPassword, name || ""],
     );
 
     const user = result.rows[0] as UserRow;
@@ -81,7 +82,7 @@ export const login: RequestHandler = async (req, res) => {
 
     const result = await db.query(
       "SELECT id, email, name, is_admin, verified, kyc_status, created_at, last_login_at, total_losses, jackpot_opt_in, password_hash FROM users WHERE email = $1",
-      [email]
+      [email],
     );
 
     const user = result.rows[0] as UserRow | undefined;
@@ -90,7 +91,10 @@ export const login: RequestHandler = async (req, res) => {
       return res.status(401).json({ error: "Invalid credentials" });
     }
 
-    const isPasswordValid = await bcryptjs.compare(password, user.password_hash);
+    const isPasswordValid = await bcryptjs.compare(
+      password,
+      user.password_hash,
+    );
 
     if (!isPasswordValid) {
       return res.status(401).json({ error: "Invalid credentials" });
@@ -132,7 +136,7 @@ export const getSession: RequestHandler = async (req, res) => {
       `SELECT id, email, name, is_admin, verified, kyc_status, 
               created_at, last_login_at, total_losses, jackpot_opt_in 
        FROM users WHERE id = $1`,
-      [payload.id]
+      [payload.id],
     );
 
     if (!result.rows[0]) {
@@ -195,7 +199,7 @@ export const updateProfile: RequestHandler = async (req, res) => {
 
     const result = await db.query(
       `UPDATE users SET ${updateQuery} WHERE id = $1 RETURNING id, email, name, is_admin, verified, kyc_status, created_at, last_login_at, total_losses, jackpot_opt_in`,
-      [payload.id, ...values]
+      [payload.id, ...values],
     );
 
     const user = result.rows[0] as UserRow;
