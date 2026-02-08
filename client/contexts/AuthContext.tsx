@@ -111,6 +111,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const loadAndSetProfile = async (userId: string) => {
+    if (!supabase) return;
+
     const { data, error } = await supabase
       .from(PROFILES_TABLE)
       .select("*")
