@@ -230,10 +230,14 @@ export const useAuth = () => {
   return context;
 };
 
-export const getAllUsers = async (token: string): Promise<User[]> => {
+export const getAllUsers = async (token?: string): Promise<User[]> => {
   try {
-    // This would require an admin endpoint - for now return empty array
-    // You can implement this when you add admin features
+    // TODO: Implement admin endpoint to fetch all users
+    // For now, returns empty array
+    // This would require:
+    // 1. Admin middleware in Express to verify admin role
+    // 2. GET /api/admin/users endpoint
+    // 3. Token-based authentication for admin endpoints
     return [];
   } catch (error) {
     console.error("Error fetching users:", error);
