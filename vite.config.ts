@@ -8,7 +8,14 @@ export default defineConfig(({ mode }) => ({
   server: {
     host: "::",
     port: 8080,
-    hmr: false,
+    hmr:
+      process.env.NODE_ENV === "production"
+        ? false
+        : {
+            protocol: "ws",
+            host: "localhost",
+            port: 8080,
+          },
     fs: {
       allow: [".", "./client", "./shared"],
       deny: [".env", ".env.*", "*.{crt,pem}", "**/.git/**", "server/**"],
