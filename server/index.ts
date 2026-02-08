@@ -51,10 +51,22 @@ import { initializeDatabase } from "./lib/db";
 export function createServer() {
   const app = express();
 
+  // Initialize database
+  initializeDatabase().catch((error) => {
+    console.error("Failed to initialize database:", error);
+  });
+
   // Middleware
   app.use(cors());
   app.use(express.json());
   app.use(express.urlencoded({ extended: true }));
+
+  // Authentication routes
+  app.post("/api/auth/register", register);
+  app.post("/api/auth/login", login);
+  app.get("/api/auth/session", getSession);
+  app.post("/api/auth/logout", logout);
+  app.post("/api/auth/profile", updateProfile);
 
   // Example API routes
   app.get("/api/ping", (_req, res) => {
