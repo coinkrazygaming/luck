@@ -46,6 +46,17 @@ import {
   logout,
   updateProfile,
 } from "./routes/auth";
+import {
+  getAllUsers,
+  getUserById,
+  updateUser,
+  deleteUser,
+  getAdminStats,
+  getUserStats,
+  getSystemStatus,
+  getDashboardData,
+} from "./routes/admin";
+import { authMiddleware, requireAdmin } from "./lib/auth-middleware";
 import { initializeDatabase } from "./lib/db";
 
 export function createServer() {
