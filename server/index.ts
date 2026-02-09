@@ -71,6 +71,19 @@ import {
   getGameStats,
   initGamesDB,
 } from "./routes/admin-games";
+import {
+  getTransactions,
+  getTransactionStats,
+  getWithdrawals,
+  approveWithdrawal,
+  rejectWithdrawal,
+  getWithdrawalStats,
+  getUserBalance,
+  updateUserBalance,
+  getRevenueReport,
+  getFinancialSummary,
+  initFinancialDB,
+} from "./routes/admin-financial";
 import { authMiddleware, requireAdmin } from "./lib/auth-middleware";
 import { initializeDatabase } from "./lib/db";
 
