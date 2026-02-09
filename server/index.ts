@@ -82,6 +82,11 @@ export function createServer() {
     console.error("Failed to initialize database:", error);
   });
 
+  // Initialize games database
+  initGamesDB().catch((error) => {
+    console.error("Failed to initialize games database:", error);
+  });
+
   // Middleware
   app.use(cors());
   app.use(express.json());
