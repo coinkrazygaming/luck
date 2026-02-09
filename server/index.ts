@@ -224,5 +224,19 @@ export function createServer() {
   app.get("/api/admin/revenue-report", ...requireAdmin, getRevenueReport);
   app.get("/api/admin/financial-summary", ...requireAdmin, getFinancialSummary);
 
+  // Admin API routes - Tournament Management
+  app.get("/api/admin/tournaments", ...requireAdmin, getAllTournaments);
+  app.get("/api/admin/tournaments/:tournamentId", ...requireAdmin, getTournamentDetails);
+  app.post("/api/admin/tournaments", ...requireAdmin, createTournament);
+  app.post("/api/admin/tournaments/:tournamentId", ...requireAdmin, updateTournament);
+  app.delete("/api/admin/tournaments/:tournamentId", ...requireAdmin, deleteTournament);
+
+  app.post("/api/admin/tournaments/:tournamentId/start", ...requireAdmin, startTournament);
+  app.post("/api/admin/tournaments/:tournamentId/end", ...requireAdmin, endTournament);
+  app.post("/api/admin/tournaments/:tournamentId/cancel", ...requireAdmin, cancelTournament);
+
+  app.post("/api/admin/tournaments/:tournamentId/leaderboard", ...requireAdmin, updateLeaderboard);
+  app.get("/api/admin/tournaments/stats", ...requireAdmin, getTournamentStats);
+
   return app;
 }
