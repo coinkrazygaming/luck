@@ -127,5 +127,15 @@ export function createServer() {
   app.get("/api/public/embed/:providerId/:gameId", getPublicGameEmbed);
   app.get("/api/public/rate-limit", getRateLimitStatus);
 
+  // Admin API routes
+  app.get("/api/admin/stats", ...requireAdmin, getAdminStats);
+  app.get("/api/admin/users", ...requireAdmin, getAllUsers);
+  app.get("/api/admin/users/:userId", ...requireAdmin, getUserById);
+  app.post("/api/admin/users/:userId", ...requireAdmin, updateUser);
+  app.delete("/api/admin/users/:userId", ...requireAdmin, deleteUser);
+  app.get("/api/admin/users/:userId/stats", ...requireAdmin, getUserStats);
+  app.get("/api/admin/system", ...requireAdmin, getSystemStatus);
+  app.get("/api/admin/dashboard", ...requireAdmin, getDashboardData);
+
   return app;
 }
