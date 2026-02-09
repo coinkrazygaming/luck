@@ -29,7 +29,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { getAllUsers } from "@/contexts/AuthContext";
+import { useAuth } from "@/contexts/AuthContext";
 import type { User } from "@/contexts/AuthContext";
 import { useJackpot } from "@/contexts/JackpotContext";
 import MessagingCenter from "@/components/MessagingCenter";
