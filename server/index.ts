@@ -118,6 +118,11 @@ export function createServer() {
     console.error("Failed to initialize financial database:", error);
   });
 
+  // Initialize tournaments database
+  initTournamentsDB().catch((error) => {
+    console.error("Failed to initialize tournaments database:", error);
+  });
+
   // Middleware
   app.use(cors());
   app.use(express.json());
