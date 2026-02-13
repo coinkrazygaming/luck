@@ -132,7 +132,7 @@ export function createServer() {
 
   // Slot provider routes
   app.get("/api/slots/providers", getSlotProviders);
-  app.get("/api/slots/games", getSlotGames);
+  app.get("/api/slots", getSlotGames);
   app.get("/api/slots/providers/:providerId/games/:gameId", getGameById);
   app.post("/api/slots/launch", launchGame);
   app.post("/api/slots/validate-session", validateSession);
