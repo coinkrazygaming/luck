@@ -35,8 +35,8 @@ This guide walks you through setting up CoinKrazy as a production-ready gaming p
 1. Go to **Authentication** → **Users**
 2. Click **Add User**
 3. Enter:
-   - Email: `coinkrazy26@gmail.com`
-   - Password: `admin123`
+   - Email: `<ADMIN_EMAIL>`
+   - Password: `<CHOOSE_A_STRONG_PASSWORD>`
    - ✅ Check "Auto confirm user"
 4. Click **Save**
 
