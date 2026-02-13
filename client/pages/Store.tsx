@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -63,9 +63,11 @@ export default function Store() {
   const [paymentMethod, setPaymentMethod] = useState<
     "card" | "paypal" | "crypto"
   >("card");
+  const [packages, setPackages] = useState<GoldCoinPackage[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
 
-  // Gold coin packages - these could be managed by admin
-  const packages: GoldCoinPackage[] = [
+  // Default packages for fallback
+  const defaultPackages: GoldCoinPackage[] = [
     {
       id: "starter",
       name: "Starter Pack",

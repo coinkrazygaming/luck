@@ -5,7 +5,6 @@ import React, {
   useEffect,
   ReactNode,
 } from "react";
-import { supabase } from "@/lib/supabase";
 
 export interface User {
   id: string;
@@ -14,13 +13,8 @@ export interface User {
   isAdmin: boolean;
   verified: boolean;
   kycStatus: "pending" | "approved" | "rejected" | "not_submitted";
-  kycDocuments?: {
-    idDocument?: string;
-    proofOfAddress?: string;
-    selfie?: string;
-  };
   createdAt: Date;
-  lastLoginAt: Date;
+  lastLoginAt: Date | null;
   totalLosses: number;
   jackpotOptIn: boolean;
 }
@@ -49,31 +43,17 @@ interface AuthContextType {
   updateKYCStatus: (status: User["kycStatus"]) => Promise<void>;
   updateJackpotOptIn: (optIn: boolean) => Promise<void>;
   addLoss: (amount: number) => Promise<void>;
+  token: string | null;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-const PROFILES_TABLE = "profiles";
-
-function mapProfileRowToUser(row: any): User {
-  return {
-    id: row.id,
-    email: row.email,
-    name: row.name ?? "",
-    isAdmin: !!row.is_admin,
-    verified: !!row.verified,
-    kycStatus: (row.kyc_status as User["kycStatus"]) ?? "not_submitted",
-    kycDocuments: row.kyc_documents ?? undefined,
-    createdAt: row.created_at ? new Date(row.created_at) : new Date(),
-    lastLoginAt: row.last_login_at ? new Date(row.last_login_at) : new Date(),
-    totalLosses: typeof row.total_losses === "number" ? row.total_losses : 0,
-    jackpotOptIn: !!row.jackpot_opt_in,
-  };
-}
-
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [token, setToken] = useState<string | null>(
+    localStorage.getItem("auth_token"),
+  );
 
   useEffect(() => {
     if (!supabase) {
@@ -95,7 +75,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (session?.user) {
         await loadAndSetProfile(session.user.id);
       }
-
       setIsLoading(false);
     };
 
@@ -151,6 +130,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (!supabase) return false;
 
     setIsLoading(true);
+    try {
+      const response = await fetch("/api/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(credentials),
+      });
+
+      if (!response.ok) {
+        setIsLoading(false);
+        return false;
+      }
 
     try {
       console.log("[Login] Attempting login for:", credentials.email);
@@ -365,6 +355,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       await supabase.auth.signOut();
     }
     setUser(null);
+    setToken(null);
+    localStorage.removeItem("auth_token");
     localStorage.removeItem("coinkrazy_auth_user");
     localStorage.removeItem("coinkrazy_auth_session");
     localStorage.removeItem("coinkrazy_user");
@@ -428,6 +420,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     updateKYCStatus,
     updateJackpotOptIn,
     addLoss,
+    token,
   };
 
   return (
@@ -459,5 +452,4 @@ export const getAllUsers = async (): Promise<
     console.error("Error fetching users:", error);
     return [];
   }
-  return (data ?? []).map(mapProfileRowToUser);
 };

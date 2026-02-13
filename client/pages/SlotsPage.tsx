@@ -13,6 +13,7 @@ import { ProgressiveJackpot } from "@/components/ProgressiveJackpot";
 import { SLOT_THEMES, getSlotTheme } from "@/components/SlotThemes";
 import { CurrencySelector } from "@/components/CurrencySelector";
 import { useCurrency, CurrencyType } from "@/contexts/CurrencyContext";
+import { SlotsGamesGrid } from "@/components/SlotsGamesGrid";
 import {
   Crown,
   Coins,
@@ -453,6 +454,19 @@ export default function SlotsPage() {
               </CardContent>
             </Card>
           </div>
+        </div>
+
+        {/* Real Slot Games Section */}
+        <div className="mt-12 pt-8 border-t border-purple-500/20">
+          <div className="mb-8">
+            <h2 className="text-2xl font-display font-bold gradient-text mb-2">
+              Featured Slot Games
+            </h2>
+            <p className="text-muted-foreground">
+              Browse our collection of real slot games from top providers
+            </p>
+          </div>
+          <SlotsGamesGrid />
         </div>
       </div>
     </div>

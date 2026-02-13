@@ -13,8 +13,8 @@ import {
   cancelTournament,
 } from "./routes/tournaments";
 import {
-  getProviders,
-  getGames,
+  getProviders as getSlotProviders,
+  getGames as getSlotGames,
   getGameById,
   launchGame,
   validateSession,
@@ -62,10 +62,47 @@ import { healthHandler } from "./routes/health";
 export function createServer() {
   const app = express();
 
+  // Initialize database
+  initializeDatabase().catch((error) => {
+    console.error("Failed to initialize database:", error);
+  });
+
+  // Initialize games database
+  initGamesDB().catch((error) => {
+    console.error("Failed to initialize games database:", error);
+  });
+
+  // Initialize financial database
+  initFinancialDB().catch((error) => {
+    console.error("Failed to initialize financial database:", error);
+  });
+
+  // Initialize tournaments database
+  initTournamentsDB().catch((error) => {
+    console.error("Failed to initialize tournaments database:", error);
+  });
+
+  // Initialize packages database
+  initPackagesDB().catch((error) => {
+    console.error("Failed to initialize packages database:", error);
+  });
+
+  // Initialize slots database
+  initializeSlotsTable().catch((error) => {
+    console.error("Failed to initialize slots database:", error);
+  });
+
   // Middleware
   app.use(cors());
   app.use(express.json());
   app.use(express.urlencoded({ extended: true }));
+
+  // Authentication routes
+  app.post("/api/auth/register", register);
+  app.post("/api/auth/login", login);
+  app.get("/api/auth/session", getSession);
+  app.post("/api/auth/logout", logout);
+  app.post("/api/auth/profile", updateProfile);
 
   // Example API routes
   app.get("/api/ping", (_req, res) => {
@@ -94,8 +131,8 @@ export function createServer() {
   app.post("/api/tournaments/:id/cancel", cancelTournament);
 
   // Slot provider routes
-  app.get("/api/slots/providers", getProviders);
-  app.get("/api/slots/games", getGames);
+  app.get("/api/slots/providers", getSlotProviders);
+  app.get("/api/slots", getSlotGames);
   app.get("/api/slots/providers/:providerId/games/:gameId", getGameById);
   app.post("/api/slots/launch", launchGame);
   app.post("/api/slots/validate-session", validateSession);
