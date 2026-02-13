@@ -22,6 +22,7 @@ import {
   RefreshCw,
   TrendingUp,
   TrendingDown,
+  Gift,
 } from "lucide-react";
 import { AdminUserManagement } from "@/components/admin/AdminUserManagement";
 import { AdminFinancial } from "@/components/admin/AdminFinancial";
@@ -29,6 +30,10 @@ import { AdminTournaments } from "@/components/admin/AdminTournaments";
 import { AdminGames } from "@/components/admin/AdminGames";
 import { AdminSettings } from "@/components/admin/AdminSettings";
 import { AdminSlots } from "@/components/admin/AdminSlots";
+import { AdminPackageManager } from "@/components/admin/AdminPackageManager";
+import { AdminCasinoBank } from "@/components/admin/AdminCasinoBank";
+import { AdminGameRoomSettings } from "@/components/admin/AdminGameRoomSettings";
+import { AdminLuckyAI } from "@/components/admin/AdminLuckyAI";
 
 interface AdminStats {
   totalUsers: number;
@@ -216,7 +221,7 @@ export default function AdminPanel() {
           onValueChange={setActiveTab}
           className="space-y-6"
         >
-          <TabsList className="grid w-full grid-cols-7">
+          <TabsList className="grid w-full grid-cols-6 lg:grid-cols-12 gap-2">
             <TabsTrigger value="dashboard">Dashboard</TabsTrigger>
             <TabsTrigger value="users">
               <Users className="h-4 w-4 mr-2" />
@@ -225,6 +230,10 @@ export default function AdminPanel() {
             <TabsTrigger value="financial">
               <DollarSign className="h-4 w-4 mr-2" />
               Financial
+            </TabsTrigger>
+            <TabsTrigger value="packages">
+              <Gift className="h-4 w-4 mr-2" />
+              Packages
             </TabsTrigger>
             <TabsTrigger value="tournaments">
               <Trophy className="h-4 w-4 mr-2" />
@@ -238,6 +247,9 @@ export default function AdminPanel() {
               <Gamepad2 className="h-4 w-4 mr-2" />
               Slots
             </TabsTrigger>
+            <TabsTrigger value="bank">Bank Info</TabsTrigger>
+            <TabsTrigger value="rooms">Game Rooms</TabsTrigger>
+            <TabsTrigger value="ai">LuckyAI</TabsTrigger>
             <TabsTrigger value="settings">
               <Settings className="h-4 w-4 mr-2" />
               Settings
@@ -369,6 +381,26 @@ export default function AdminPanel() {
           {/* Slots Tab */}
           <TabsContent value="slots" className="space-y-6">
             <AdminSlots token={token} />
+          </TabsContent>
+
+          {/* Packages Tab */}
+          <TabsContent value="packages" className="space-y-6">
+            <AdminPackageManager token={token} />
+          </TabsContent>
+
+          {/* Casino Bank Tab */}
+          <TabsContent value="bank" className="space-y-6">
+            <AdminCasinoBank token={token} />
+          </TabsContent>
+
+          {/* Game Rooms Tab */}
+          <TabsContent value="rooms" className="space-y-6">
+            <AdminGameRoomSettings token={token} />
+          </TabsContent>
+
+          {/* LuckyAI Tab */}
+          <TabsContent value="ai" className="space-y-6">
+            <AdminLuckyAI token={token} />
           </TabsContent>
 
           {/* Settings Tab */}
