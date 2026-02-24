@@ -5,6 +5,24 @@ import React, {
   useEffect,
   ReactNode,
 } from "react";
+import { supabase } from "@/lib/supabase";
+
+const PROFILES_TABLE = "profiles";
+
+function mapProfileRowToUser(row: any): User {
+  return {
+    id: row.id,
+    email: row.email,
+    name: row.name || "",
+    isAdmin: row.is_admin || false,
+    verified: row.verified || false,
+    kycStatus: (row.kyc_status as User["kycStatus"]) || "not_submitted",
+    createdAt: row.created_at ? new Date(row.created_at) : new Date(),
+    lastLoginAt: row.last_login_at ? new Date(row.last_login_at) : null,
+    totalLosses: Number(row.total_losses) || 0,
+    jackpotOptIn: !!row.jackpot_opt_in,
+  };
+}
 
 export interface User {
   id: string;
