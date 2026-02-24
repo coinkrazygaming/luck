@@ -1,10 +1,5 @@
 import { RequestHandler } from "express";
-import { createClient } from "@supabase/supabase-js";
-
-const supabase = createClient(
-  process.env.VITE_SUPABASE_URL || "",
-  process.env.VITE_SUPABASE_ANON_KEY || "",
-);
+import { db } from "../lib/db";
 
 // Get user transactions
 export const getUserTransactions: RequestHandler = async (req, res) => {
@@ -16,18 +11,12 @@ export const getUserTransactions: RequestHandler = async (req, res) => {
       return res.status(400).json({ error: "userId is required" });
     }
 
-    const { data, error } = await supabase
-      .from("transactions")
-      .select("*")
-      .eq("user_id", userId)
-      .order("created_at", { ascending: false })
-      .limit(limit);
+    const result = await db.query(
+      "SELECT * FROM transactions WHERE user_id = $1 ORDER BY created_at DESC LIMIT $2",
+      [userId, limit]
+    );
 
-    if (error) {
-      return res.status(400).json({ error: error.message });
-    }
-
-    res.json({ transactions: data });
+    res.json({ transactions: result.rows });
   } catch (error) {
     console.error("Error fetching transactions:", error);
     res.status(500).json({ error: "Failed to fetch transactions" });
@@ -43,47 +32,36 @@ export const getUserBalance: RequestHandler = async (req, res) => {
       return res.status(400).json({ error: "userId is required" });
     }
 
-    const { data, error } = await supabase
-      .from("user_balances")
-      .select("*")
-      .eq("user_id", userId)
-      .single();
-
-    if (error && error.code !== "PGRST116") {
-      return res.status(400).json({ error: error.message });
-    }
+    let result = await db.query(
+      "SELECT * FROM user_balances WHERE user_id = $1",
+      [userId]
+    );
 
     // If no balance record exists, create one
-    if (!data) {
-      const { data: newBalance, error: createError } = await supabase
-        .from("user_balances")
-        .insert({
-          user_id: userId,
-          gold_coins: 10000,
-          sweep_coins: 10,
-          bonus_coins: 0,
-        })
-        .select()
-        .single();
-
-      if (createError) {
-        return res.status(400).json({ error: createError.message });
-      }
-
+    if (result.rows.length === 0) {
+      const insertResult = await db.query(
+        `INSERT INTO user_balances (user_id, gold_coins, sweep_coins)
+         VALUES ($1, 10000, 10)
+         RETURNING *`,
+        [userId]
+      );
+      
+      const newBalance = insertResult.rows[0];
       return res.json({
         balance: {
-          goldCoins: newBalance.gold_coins,
-          sweepCoins: newBalance.sweep_coins,
-          bonusCoins: newBalance.bonus_coins,
+          goldCoins: parseFloat(newBalance.gold_coins),
+          sweepCoins: parseFloat(newBalance.sweep_coins),
+          bonusCoins: 0,
         },
       });
     }
 
+    const data = result.rows[0];
     res.json({
       balance: {
-        goldCoins: data.gold_coins,
-        sweepCoins: data.sweep_coins,
-        bonusCoins: data.bonus_coins,
+        goldCoins: parseFloat(data.gold_coins),
+        sweepCoins: parseFloat(data.sweep_coins),
+        bonusCoins: 0,
       },
     });
   } catch (error) {
@@ -103,48 +81,57 @@ export const recordTransaction: RequestHandler = async (req, res) => {
       });
     }
 
-    // Get current balance
-    const { data: balance } = await supabase
-      .from("user_balances")
-      .select(currency === "GC" ? "gold_coins" : "sweep_coins")
-      .eq("user_id", userId)
-      .single();
-
-    const currentBalance =
-      balance?.[currency === "GC" ? "gold_coins" : "sweep_coins"] || 0;
-    const newBalance = Math.max(0, currentBalance + amount);
-
-    // Update balance
     const field = currency === "GC" ? "gold_coins" : "sweep_coins";
-    await supabase
-      .from("user_balances")
-      .update({ [field]: newBalance })
-      .eq("user_id", userId);
 
-    // Record transaction
-    const { data, error } = await supabase
-      .from("transactions")
-      .insert({
-        user_id: userId,
-        type,
-        currency,
-        amount,
-        description,
-        game_type: gameType,
-        balance_before: currentBalance,
-        balance_after: newBalance,
-      })
-      .select()
-      .single();
+    // Get current balance and update in a transaction
+    const client = await db.connect();
+    try {
+      await client.query('BEGIN');
+      
+      const balanceResult = await client.query(
+        `SELECT ${field} FROM user_balances WHERE user_id = $1 FOR UPDATE`,
+        [userId]
+      );
 
-    if (error) {
-      return res.status(400).json({ error: error.message });
+      let currentBalance = 0;
+      if (balanceResult.rows.length > 0) {
+        currentBalance = parseFloat(balanceResult.rows[0][field]);
+      } else {
+        // Create balance if it doesn't exist
+        await client.query(
+          `INSERT INTO user_balances (user_id, gold_coins, sweep_coins) VALUES ($1, 0, 0)`,
+          [userId]
+        );
+      }
+
+      const newBalance = Math.max(0, currentBalance + amount);
+
+      // Update balance
+      await client.query(
+        `UPDATE user_balances SET ${field} = $1, updated_at = CURRENT_TIMESTAMP WHERE user_id = $2`,
+        [newBalance, userId]
+      );
+
+      // Record transaction
+      const transactionResult = await client.query(
+        `INSERT INTO transactions (user_id, type, currency, amount, description, metadata, created_at)
+         VALUES ($1, $2, $3, $4, $5, $6, CURRENT_TIMESTAMP)
+         RETURNING *`,
+        [userId, type, currency, amount, description, JSON.stringify({ gameType })]
+      );
+
+      await client.query('COMMIT');
+
+      res.json({
+        transaction: transactionResult.rows[0],
+        newBalance,
+      });
+    } catch (e) {
+      await client.query('ROLLBACK');
+      throw e;
+    } finally {
+      client.release();
     }
-
-    res.json({
-      transaction: data,
-      newBalance,
-    });
   } catch (error) {
     console.error("Error recording transaction:", error);
     res.status(500).json({ error: "Failed to record transaction" });

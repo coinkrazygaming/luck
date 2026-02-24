@@ -56,6 +56,7 @@ import {
   registerHandler,
   logoutHandler,
   refreshHandler,
+  getSessionHandler,
 } from "./routes/auth";
 import { healthHandler } from "./routes/health";
 import { initializeDatabase } from "./lib/db";
@@ -97,11 +98,12 @@ export function createServer() {
 
   app.get("/api/demo", handleDemo);
 
-  // Auth routes (proxy to Supabase)
+  // Auth routes (local DB)
   app.post("/api/auth/login", loginHandler);
   app.post("/api/auth/register", registerHandler);
   app.post("/api/auth/logout", logoutHandler);
   app.post("/api/auth/refresh", refreshHandler);
+  app.get("/api/auth/session", getSessionHandler);
 
   // Tournament routes
   app.get("/api/tournaments", getTournaments);

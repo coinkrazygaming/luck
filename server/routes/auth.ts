@@ -1,114 +1,73 @@
 import { RequestHandler } from "express";
-import { createClient } from "@supabase/supabase-js";
+import bcryptjs from "bcryptjs";
+import jwt from "jsonwebtoken";
+import { db } from "../lib/db";
 
-// Initialize Supabase client on the server side
-const supabaseUrl = process.env.VITE_SUPABASE_URL;
-const supabaseAnonKey = process.env.VITE_SUPABASE_ANON_KEY;
-
-console.log("[Auth Routes] Initializing Supabase...");
-console.log(
-  "[Auth Routes] VITE_SUPABASE_URL:",
-  supabaseUrl ? "✓ Set" : "✗ Missing",
-);
-console.log(
-  "[Auth Routes] VITE_SUPABASE_ANON_KEY:",
-  supabaseAnonKey ? "✓ Set" : "✗ Missing",
-);
-
-const supabase =
-  supabaseUrl && supabaseAnonKey
-    ? createClient(supabaseUrl, supabaseAnonKey, {
-        auth: {
-          persistSession: false,
-          autoRefreshToken: false,
-        },
-      })
-    : null;
-
-if (!supabase) {
-  console.error(
-    "[Auth Routes] Supabase client not initialized - auth will not work",
-  );
-}
+const JWT_SECRET = process.env.JWT_SECRET || "fallback-secret-for-dev-only";
 
 /**
  * POST /api/auth/login
- * Proxy endpoint for Supabase authentication
+ * Local database authentication
  */
 export const loginHandler: RequestHandler = async (req, res) => {
   try {
-    console.log("[Auth] Login attempt");
-
-    if (!supabase) {
-      console.error("[Auth] Supabase not initialized");
-      return res
-        .status(500)
-        .json({ error: "Authentication service unavailable" });
-    }
+    console.log("[Auth] Local login attempt");
 
     const { email, password } = req.body;
-    console.log("[Auth] Login for email:", email);
 
     if (!email || !password) {
       return res.status(400).json({ error: "Email and password required" });
     }
 
-    const { data, error } = await supabase.auth.signInWithPassword({
+    const result = await db.query("SELECT * FROM users WHERE email = $1", [
       email,
-      password,
-    });
+    ]);
 
-    if (error) {
-      console.error("[Auth] Supabase auth error details:");
-      console.error("[Auth] - Message:", error.message);
-      console.error("[Auth] - Status:", (error as any).status);
-      console.error("[Auth] - Code:", (error as any).code);
-      console.error("[Auth] - Full error:", JSON.stringify(error, null, 2));
-
-      let statusCode = 401;
-      let errorMessage = error.message || "Authentication failed";
-
-      // Check if it's a network error
-      if (
-        error.message?.includes("fetch failed") ||
-        error.message?.includes("ENOTFOUND")
-      ) {
-        statusCode = 503;
-        errorMessage =
-          "Authentication service temporarily unavailable. Supabase server cannot be reached. Please verify your Supabase project is running and accessible. Check /api/health for details.";
-      }
-
-      return res.status(statusCode).json({
-        error: errorMessage,
-        code: (error as any).code,
-        message: error.message,
-        hint: "If Supabase is unreachable, check network connectivity and verify the project exists at https://app.supabase.com",
-      });
+    if (result.rows.length === 0) {
+      return res.status(401).json({ error: "Invalid email or password" });
     }
 
-    if (!data.session) {
-      console.error("[Auth] No session returned from Supabase");
-      return res.status(401).json({ error: "No session returned" });
+    const user = result.rows[0];
+    const isPasswordValid = await bcryptjs.compare(password, user.password_hash);
+
+    if (!isPasswordValid) {
+      return res.status(401).json({ error: "Invalid email or password" });
     }
+
+    // Update last login
+    await db.query(
+      "UPDATE users SET last_login_at = CURRENT_TIMESTAMP WHERE id = $1",
+      [user.id],
+    );
+
+    // Generate token
+    const token = jwt.sign(
+      { id: user.id, email: user.email, isAdmin: user.is_admin },
+      JWT_SECRET,
+      { expiresIn: "24h" },
+    );
 
     console.log("[Auth] Login successful for:", email);
 
-    // Return session and user data
+    // Return session and user data to match what the client expects
     const responseData = {
       session: {
-        access_token: data.session.access_token,
-        refresh_token: data.session.refresh_token || null,
-        expires_in: data.session.expires_in || null,
-        expires_at: data.session.expires_at || null,
+        access_token: token,
+        refresh_token: null, // Local auth doesn't have refresh tokens in this simple impl
+        expires_in: 86400,
+        expires_at: Math.floor(Date.now() / 1000) + 86400,
       },
       user: {
-        id: data.user.id,
-        email: data.user.email || email,
-        created_at: data.user.created_at || new Date().toISOString(),
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        isAdmin: user.is_admin,
+        verified: user.verified,
+        kycStatus: user.kyc_status,
+        created_at: user.created_at,
       },
     };
 
-    res.setHeader("Content-Type", "application/json");
     res.json(responseData);
   } catch (error) {
     console.error("[Auth] Login handler exception:", error);
@@ -120,47 +79,58 @@ export const loginHandler: RequestHandler = async (req, res) => {
 
 /**
  * POST /api/auth/register
- * Proxy endpoint for Supabase registration
+ * Local database registration
  */
 export const registerHandler: RequestHandler = async (req, res) => {
   try {
-    if (!supabase) {
-      return res
-        .status(500)
-        .json({ error: "Authentication service unavailable" });
-    }
-
+    console.log("[Auth] Local registration attempt");
     const { email, password, name } = req.body;
 
     if (!email || !password) {
       return res.status(400).json({ error: "Email and password required" });
     }
 
-    const { data, error } = await supabase.auth.signUp({
+    // Check if user exists
+    const checkResult = await db.query("SELECT id FROM users WHERE email = $1", [
       email,
-      password,
-      options: {
-        data: { name: name || "" },
-      },
-    });
+    ]);
 
-    if (error) {
-      console.error("Supabase signup error:", error);
-      return res.status(400).json({ error: error.message });
+    if (checkResult.rows.length > 0) {
+      return res.status(400).json({ error: "User already exists" });
     }
 
-    if (!data.user) {
-      return res.status(400).json({ error: "Failed to create user" });
-    }
+    const hashedPassword = await bcryptjs.hash(password, 10);
 
-    // Return user data (no session on signup as email confirmation may be required)
+    const insertResult = await db.query(
+      "INSERT INTO users (email, password_hash, name) VALUES ($1, $2, $3) RETURNING *",
+      [email, hashedPassword, name || ""],
+    );
+
+    const user = insertResult.rows[0];
+    console.log("[Auth] Registration successful for:", email);
+
+    // Generate token
+    const token = jwt.sign(
+      { id: user.id, email: user.email, isAdmin: user.is_admin },
+      JWT_SECRET,
+      { expiresIn: "24h" },
+    );
+
+    // Return session and user data
     res.status(201).json({
-      user: {
-        id: data.user.id,
-        email: data.user.email,
-        created_at: data.user.created_at,
+      session: {
+        access_token: token,
+        refresh_token: null,
+        expires_in: 86400,
+        expires_at: Math.floor(Date.now() / 1000) + 86400,
       },
-      message: "User created successfully. Please check your email to confirm.",
+      user: {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        created_at: user.created_at,
+      },
+      message: "User created successfully.",
     });
   } catch (error) {
     console.error("Register handler error:", error);
@@ -169,61 +139,58 @@ export const registerHandler: RequestHandler = async (req, res) => {
 };
 
 /**
- * POST /api/auth/logout
- * Handle logout (clear session)
+ * GET /api/auth/session
+ * Get current session/user data from JWT
  */
-export const logoutHandler: RequestHandler = async (req, res) => {
+export const getSessionHandler: RequestHandler = async (req, res) => {
   try {
-    // Logout is handled on the client side by clearing the session
-    // This endpoint is mainly for cleanup if needed
-    res.json({ message: "Logged out successfully" });
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+      return res.status(401).json({ error: "No token provided" });
+    }
+
+    const token = authHeader.split(" ")[1];
+    try {
+      const decoded = jwt.verify(token, JWT_SECRET) as any;
+
+      const result = await db.query("SELECT * FROM users WHERE id = $1", [decoded.id]);
+      if (result.rows.length === 0) {
+        return res.status(401).json({ error: "User not found" });
+      }
+
+      const user = result.rows[0];
+      res.json({
+        user: {
+          id: user.id,
+          email: user.email,
+          name: user.name,
+          isAdmin: user.is_admin,
+          verified: user.verified,
+          kycStatus: user.kyc_status,
+          created_at: user.created_at,
+        }
+      });
+    } catch (err) {
+      return res.status(401).json({ error: "Invalid token" });
+    }
   } catch (error) {
-    console.error("Logout handler error:", error);
+    console.error("[Auth] getSession handler error:", error);
     res.status(500).json({ error: "Internal server error" });
   }
 };
 
 /**
+ * POST /api/auth/logout
+ */
+export const logoutHandler: RequestHandler = async (req, res) => {
+  res.json({ message: "Logged out successfully" });
+};
+
+/**
  * POST /api/auth/refresh
- * Refresh the access token using refresh token
  */
 export const refreshHandler: RequestHandler = async (req, res) => {
-  try {
-    if (!supabase) {
-      return res
-        .status(500)
-        .json({ error: "Authentication service unavailable" });
-    }
-
-    const { refresh_token } = req.body;
-
-    if (!refresh_token) {
-      return res.status(400).json({ error: "Refresh token required" });
-    }
-
-    const { data, error } = await supabase.auth.refreshSession({
-      refresh_token,
-    });
-
-    if (error) {
-      console.error("Token refresh error:", error);
-      return res.status(401).json({ error: error.message });
-    }
-
-    if (!data.session) {
-      return res.status(401).json({ error: "Failed to refresh session" });
-    }
-
-    res.json({
-      session: {
-        access_token: data.session.access_token,
-        refresh_token: data.session.refresh_token,
-        expires_in: data.session.expires_in,
-        expires_at: data.session.expires_at,
-      },
-    });
-  } catch (error) {
-    console.error("Refresh handler error:", error);
-    res.status(500).json({ error: "Internal server error" });
-  }
+  // Simple implementation: return current session if token is still valid
+  // In a real app, we'd use a separate refresh token
+  res.status(400).json({ error: "Refresh tokens not supported in local auth fallback" });
 };

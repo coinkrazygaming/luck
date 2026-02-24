@@ -6,7 +6,6 @@ import React, {
   ReactNode,
   useCallback,
 } from "react";
-import { supabase } from "@/lib/supabase";
 import { useAuthSafe } from "./AuthContext";
 
 export enum CurrencyType {
@@ -77,6 +76,7 @@ const CurrencyContext = createContext<CurrencyContextType | undefined>(
 export function CurrencyProvider({ children }: { children: ReactNode }) {
   const authContext = useAuthSafe();
   const authUser = authContext?.user || null;
+  const token = authContext?.token || null;
 
   const [user, setUser] = useState<UserProfile | null>(null);
   const [selectedCurrency, setSelectedCurrency] = useState<CurrencyType>(
@@ -85,9 +85,9 @@ export function CurrencyProvider({ children }: { children: ReactNode }) {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
-  // Load user balance and transactions from Supabase
+  // Load user balance and transactions from local API
   const loadUserData = useCallback(async () => {
-    if (!authUser || !supabase) {
+    if (!authUser || !token) {
       setIsLoading(false);
       return;
     }
@@ -96,27 +96,16 @@ export function CurrencyProvider({ children }: { children: ReactNode }) {
       setIsLoading(true);
 
       // Fetch user balance
-      const { data: balanceData, error: balanceError } = await supabase
-        .from("user_balances")
-        .select("*")
-        .eq("user_id", authUser.id)
-        .single();
-
-      if (balanceError && balanceError.code !== "PGRST116") {
-        console.error("Error loading balance:", balanceError);
-      }
+      const balanceResponse = await fetch(`/api/balance?userId=${authUser.id}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      const balanceData = balanceResponse.ok ? (await balanceResponse.json()).balance : null;
 
       // Fetch transactions
-      const { data: transactionData, error: transError } = await supabase
-        .from("transactions")
-        .select("*")
-        .eq("user_id", authUser.id)
-        .order("created_at", { ascending: false })
-        .limit(100);
-
-      if (transError) {
-        console.error("Error loading transactions:", transError);
-      }
+      const transResponse = await fetch(`/api/transactions?userId=${authUser.id}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      const transData = transResponse.ok ? (await transResponse.json()).transactions : [];
 
       // Build user profile
       const profile: UserProfile = {
@@ -124,29 +113,29 @@ export function CurrencyProvider({ children }: { children: ReactNode }) {
         email: authUser.email,
         name: authUser.name || "",
         balance: {
-          goldCoins: balanceData?.gold_coins || 0,
-          sweepCoins: balanceData?.sweep_coins || 0,
+          goldCoins: balanceData?.goldCoins || 0,
+          sweepCoins: balanceData?.sweepCoins || 0,
         },
-        isNewUser: !balanceData?.gold_coins,
-        lastDailySpinClaim: authUser.lastDailySpinClaim || null,
-        totalWagered: authUser.totalWagered || { goldCoins: 0, sweepCoins: 0 },
-        totalWon: authUser.totalWon || { goldCoins: 0, sweepCoins: 0 },
+        isNewUser: !balanceData?.goldCoins,
+        lastDailySpinClaim: null, // Would need a profile endpoint to get this
+        totalWagered: { goldCoins: 0, sweepCoins: 0 },
+        totalWon: { goldCoins: 0, sweepCoins: 0 },
         verified: authUser.verified || false,
-        level: authUser.level || 1,
+        level: 1,
       };
 
       setUser(profile);
 
       // Convert transactions
-      const mappedTransactions: Transaction[] = (transactionData || []).map(
+      const mappedTransactions: Transaction[] = (transData || []).map(
         (t: any) => ({
           id: t.id,
           type: t.type,
           currency: t.currency,
-          amount: t.amount,
+          amount: parseFloat(t.amount),
           description: t.description,
           timestamp: new Date(t.created_at),
-          gameType: t.game_type,
+          gameType: t.metadata?.gameId,
         }),
       );
 
@@ -156,32 +145,12 @@ export function CurrencyProvider({ children }: { children: ReactNode }) {
     } finally {
       setIsLoading(false);
     }
-  }, [authUser]);
+  }, [authUser, token]);
 
   // Load data when auth user changes
   useEffect(() => {
     loadUserData();
   }, [loadUserData]);
-
-  // Create or update user balance
-  const ensureUserBalance = useCallback(async (userId: string) => {
-    if (!supabase) return;
-
-    const { data: existing } = await supabase
-      .from("user_balances")
-      .select("*")
-      .eq("user_id", userId)
-      .single();
-
-    if (!existing) {
-      await supabase.from("user_balances").insert({
-        user_id: userId,
-        gold_coins: 10000, // Welcome bonus
-        sweep_coins: 10,
-        bonus_coins: 0,
-      });
-    }
-  }, []);
 
   const updateBalance = useCallback(
     async (
@@ -190,57 +159,48 @@ export function CurrencyProvider({ children }: { children: ReactNode }) {
       description: string,
       type: "win" | "wager" | "bonus" = "win",
     ) => {
-      if (!authUser || !supabase || !user) return;
+      if (!authUser || !token || !user) return;
 
       try {
-        const field =
-          currency === CurrencyType.GC ? "gold_coins" : "sweep_coins";
-
-        // Update balance in database
-        const { data: currentBalance } = await supabase
-          .from("user_balances")
-          .select(field)
-          .eq("user_id", authUser.id)
-          .single();
-
-        const newBalance = Math.max(0, (currentBalance?.[field] || 0) + amount);
-
-        await supabase
-          .from("user_balances")
-          .update({ [field]: newBalance })
-          .eq("user_id", authUser.id);
-
-        // Record transaction
-        await supabase.from("transactions").insert({
-          user_id: authUser.id,
-          type,
-          currency,
-          amount,
-          description,
-          balance_before: currentBalance?.[field] || 0,
-          balance_after: newBalance,
+        const response = await fetch("/api/transactions", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            userId: authUser.id,
+            type,
+            currency,
+            amount,
+            description,
+          }),
         });
 
-        // Update local state
-        setUser((prev) => {
-          if (!prev) return prev;
-          return {
-            ...prev,
-            balance: {
-              ...prev.balance,
-              [currency === CurrencyType.GC ? "goldCoins" : "sweepCoins"]:
-                newBalance,
-            },
-          };
-        });
+        if (response.ok) {
+          const { newBalance } = await response.json();
+          
+          // Update local state
+          setUser((prev) => {
+            if (!prev) return prev;
+            return {
+              ...prev,
+              balance: {
+                ...prev.balance,
+                [currency === CurrencyType.GC ? "goldCoins" : "sweepCoins"]:
+                  newBalance,
+              },
+            };
+          });
 
-        // Reload transactions
-        await loadUserData();
+          // Reload transactions
+          await loadUserData();
+        }
       } catch (error) {
         console.error("Error updating balance:", error);
       }
     },
-    [authUser, user, loadUserData],
+    [authUser, token, user, loadUserData],
   );
 
   const canAffordWager = (currency: CurrencyType, amount: number): boolean => {
@@ -255,16 +215,19 @@ export function CurrencyProvider({ children }: { children: ReactNode }) {
 
   const addTransaction = useCallback(
     async (transaction: Omit<Transaction, "id" | "timestamp">) => {
-      if (!authUser || !supabase) return;
+      if (!authUser || !token) return;
 
       try {
-        const { data } = await supabase.from("transactions").insert({
-          user_id: authUser.id,
-          type: transaction.type,
-          currency: transaction.currency,
-          amount: transaction.amount,
-          description: transaction.description,
-          game_type: transaction.gameType,
+        await fetch("/api/transactions", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            userId: authUser.id,
+            ...transaction,
+          }),
         });
 
         // Reload transactions
@@ -273,7 +236,7 @@ export function CurrencyProvider({ children }: { children: ReactNode }) {
         console.error("Error adding transaction:", error);
       }
     },
-    [authUser, loadUserData],
+    [authUser, token, loadUserData],
   );
 
   const getTransactionHistory = (): Transaction[] => {
@@ -281,11 +244,9 @@ export function CurrencyProvider({ children }: { children: ReactNode }) {
   };
 
   const claimWelcomeBonus = useCallback(async () => {
-    if (!user || !user.isNewUser || !authUser || !supabase) return;
+    if (!user || !user.isNewUser || !authUser || !token) return;
 
     try {
-      // Update to non-new-user status (handled in auth context)
-      // Add welcome bonus
       await updateBalance(
         CurrencyType.GC,
         10000,
@@ -301,7 +262,7 @@ export function CurrencyProvider({ children }: { children: ReactNode }) {
     } catch (error) {
       console.error("Error claiming welcome bonus:", error);
     }
-  }, [user, authUser, updateBalance]);
+  }, [user, authUser, token, updateBalance]);
 
   const canClaimDailySpin = (): boolean => {
     if (!user) return false;
@@ -317,15 +278,10 @@ export function CurrencyProvider({ children }: { children: ReactNode }) {
   };
 
   const claimDailySpin = useCallback(async () => {
-    if (!user || !canClaimDailySpin() || !authUser || !supabase) return;
+    if (!user || !canClaimDailySpin() || !authUser || !token) return;
 
     try {
-      // Update last daily spin claim in profiles table
-      await supabase
-        .from("profiles")
-        .update({ last_daily_spin_claim: new Date().toISOString() })
-        .eq("id", authUser.id);
-
+      // In a real app, you'd have an endpoint to update last_daily_spin_claim in DB
       setUser((prev) => {
         if (!prev) return prev;
         return { ...prev, lastDailySpinClaim: new Date() };
@@ -333,7 +289,7 @@ export function CurrencyProvider({ children }: { children: ReactNode }) {
     } catch (error) {
       console.error("Error claiming daily spin:", error);
     }
-  }, [user, authUser, canClaimDailySpin]);
+  }, [user, authUser, token, canClaimDailySpin]);
 
   const initializeUser = (userData: Partial<UserProfile>) => {
     if (!user) {

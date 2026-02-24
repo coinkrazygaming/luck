@@ -5,24 +5,6 @@ import React, {
   useEffect,
   ReactNode,
 } from "react";
-import { supabase } from "@/lib/supabase";
-
-const PROFILES_TABLE = "profiles";
-
-function mapProfileRowToUser(row: any): User {
-  return {
-    id: row.id,
-    email: row.email,
-    name: row.name || "",
-    isAdmin: row.is_admin || false,
-    verified: row.verified || false,
-    kycStatus: (row.kyc_status as User["kycStatus"]) || "not_submitted",
-    createdAt: row.created_at ? new Date(row.created_at) : new Date(),
-    lastLoginAt: row.last_login_at ? new Date(row.last_login_at) : null,
-    totalLosses: Number(row.total_losses) || 0,
-    jackpotOptIn: !!row.jackpot_opt_in,
-  };
-}
 
 export interface User {
   id: string;
@@ -70,233 +52,91 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [token, setToken] = useState<string | null>(
-    localStorage.getItem("auth_token"),
+    localStorage.getItem("coinkrazy_auth_token")
   );
 
   useEffect(() => {
-    if (!supabase) {
-      setIsLoading(false);
-      return;
-    }
-
     const init = async () => {
-      if (!supabase) {
-        console.warn("Supabase not initialized - auth features disabled");
+      const storedToken = localStorage.getItem("coinkrazy_auth_token");
+      if (!storedToken) {
         setIsLoading(false);
         return;
       }
 
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
+      try {
+        const response = await fetch("/api/auth/session", {
+          headers: {
+            Authorization: `Bearer ${storedToken}`,
+          },
+        });
 
-      if (session?.user) {
-        await loadAndSetProfile(session.user.id);
-      }
-      setIsLoading(false);
-    };
-
-    if (!supabase) {
-      setIsLoading(false);
-      return;
-    }
-
-    const { data: authListener } = supabase.auth.onAuthStateChange(
-      async (_event, session) => {
-        if (session?.user) {
-          await loadAndSetProfile(session.user.id);
+        if (response.ok) {
+          const { user } = await response.json();
+          setUser({
+            ...user,
+            createdAt: new Date(user.created_at),
+            lastLoginAt: user.last_login_at ? new Date(user.last_login_at) : null,
+          });
+          setToken(storedToken);
         } else {
-          setUser(null);
-          localStorage.removeItem("coinkrazy_auth_user");
+          // Token expired or invalid
+          localStorage.removeItem("coinkrazy_auth_token");
+          setToken(null);
         }
-      },
-    );
+      } catch (error) {
+        console.error("Auth initialization error:", error);
+      } finally {
+        setIsLoading(false);
+      }
+    };
 
     init();
-    return () => {
-      authListener.subscription.unsubscribe();
-    };
   }, []);
 
-  const loadAndSetProfile = async (userId: string) => {
-    if (!supabase) return;
-
-    const { data, error } = await supabase
-      .from(PROFILES_TABLE)
-      .select("*")
-      .eq("id", userId)
-      .maybeSingle();
-
-    if (error) {
-      console.error("Error loading profile:", error);
-      return;
-    }
-
-    if (data) {
-      const mapped = mapProfileRowToUser(data);
-      setUser(mapped);
-      localStorage.setItem("coinkrazy_auth_user", JSON.stringify(mapped));
-      // Update last login timestamp
-      await supabase
-        .from(PROFILES_TABLE)
-        .update({ last_login_at: new Date().toISOString() })
-        .eq("id", userId);
-    }
-  };
-
   const login = async (credentials: LoginCredentials): Promise<boolean> => {
-    if (!supabase) return false;
-
     setIsLoading(true);
     try {
-      console.log("[Login] Attempting login for:", credentials.email);
-
-      // Call the backend proxy endpoint instead of Supabase directly
       const response = await fetch("/api/auth/login", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          email: credentials.email,
-          password: credentials.password,
-        }),
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(credentials),
       });
 
-      console.log("[Login] Response status:", response.status);
-      console.log(
-        "[Login] Response headers:",
-        response.headers.get("content-type"),
-      );
-
       if (!response.ok) {
-        let errorData;
-        const contentType = response.headers.get("content-type");
-        if (contentType?.includes("application/json")) {
-          try {
-            errorData = await response.json();
-            console.error("[Login] Error response status:", response.status);
-            console.error(
-              "[Login] Error response data:",
-              JSON.stringify(errorData, null, 2),
-            );
-            console.error("[Login] Error message:", errorData?.error);
-          } catch {
-            console.error("[Login] Failed to parse error response JSON");
-            errorData = { error: `HTTP ${response.status} error` };
-          }
-        } else {
-          const text = await response.text();
-          console.error("[Login] Non-JSON error response:", text);
-          console.error("[Login] Response status:", response.status);
-          errorData = { error: `HTTP ${response.status} error: ${text}` };
-        }
         setIsLoading(false);
         return false;
       }
 
-      let responseData;
-      const contentType = response.headers.get("content-type");
-      if (!contentType?.includes("application/json")) {
-        console.error("[Login] Response is not JSON:", contentType);
-        const text = await response.text();
-        console.error("[Login] Response text:", text);
-        setIsLoading(false);
-        return false;
-      }
+      const { session, user: userData } = await response.json();
+      
+      const mappedUser: User = {
+        ...userData,
+        createdAt: new Date(userData.created_at),
+        lastLoginAt: userData.last_login_at ? new Date(userData.last_login_at) : null,
+      };
 
-      try {
-        responseData = await response.json();
-      } catch (parseError) {
-        console.error("[Login] Failed to parse response JSON:", parseError);
-        setIsLoading(false);
-        return false;
-      }
+      setUser(mappedUser);
+      setToken(session.access_token);
+      localStorage.setItem("coinkrazy_auth_token", session.access_token);
+      localStorage.setItem("coinkrazy_auth_user", JSON.stringify(mappedUser));
 
-      const { session, user } = responseData;
-
-      if (!session || !user) {
-        console.warn("[Login] Missing session or user in response:", {
-          hasSession: !!session,
-          hasUser: !!user,
-        });
-        setIsLoading(false);
-        return false;
-      }
-
-      console.log("[Login] Received session and user data");
-
-      // Store session in localStorage for persistence
-      localStorage.setItem(
-        "coinkrazy_auth_session",
-        JSON.stringify({
-          access_token: session.access_token,
-          refresh_token: session.refresh_token,
-          expires_at: session.expires_at,
-        }),
-      );
-
-      // Load and set the full user profile from the database
-      if (supabase) {
-        console.log("[Login] Loading full user profile from Supabase");
-        await loadAndSetProfile(user.id);
-      } else {
-        console.warn(
-          "[Login] Supabase not available, using minimal user object",
-        );
-        // Fallback: set a minimal user object
-        const minimalUser: User = {
-          id: user.id,
-          email: user.email,
-          name: "",
-          isAdmin: false,
-          verified: false,
-          kycStatus: "not_submitted",
-          createdAt: new Date(user.created_at),
-          lastLoginAt: new Date(),
-          totalLosses: 0,
-          jackpotOptIn: false,
-        };
-        setUser(minimalUser);
-        localStorage.setItem(
-          "coinkrazy_auth_user",
-          JSON.stringify(minimalUser),
-        );
-      }
-
-      console.log("[Login] Login successful");
       setIsLoading(false);
       return true;
-    } catch (error: unknown) {
+    } catch (error) {
       console.error("[Login] Exception:", error);
-      if (error instanceof Error) {
-        console.error("[Login] Error message:", error.message);
-        console.error("[Login] Error stack:", error.stack);
-      }
       setIsLoading(false);
       return false;
     }
   };
 
   const register = async (data: RegisterData): Promise<boolean> => {
-    if (!supabase) return false;
-
+    if (data.password !== data.confirmPassword) return false;
+    
     setIsLoading(true);
-
-    if (data.password !== data.confirmPassword) {
-      setIsLoading(false);
-      return false;
-    }
-
     try {
-      console.log("Attempting registration via proxy for:", data.email);
-
-      // Call the backend proxy endpoint
       const response = await fetch("/api/auth/register", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           email: data.email,
           password: data.password,
@@ -305,97 +145,49 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       });
 
       if (!response.ok) {
-        const errorData = await response.json();
-        console.error("Registration error:", errorData.error);
         setIsLoading(false);
         return false;
       }
 
-      const { user } = await response.json();
+      const { session, user: userData } = await response.json();
+      
+      const mappedUser: User = {
+        ...userData,
+        createdAt: new Date(userData.created_at),
+        lastLoginAt: userData.last_login_at ? new Date(userData.last_login_at) : null,
+      };
 
-      if (!user) {
-        console.warn("No user returned from registration");
-        setIsLoading(false);
-        return false;
-      }
-
-      // Create user profile in the database if Supabase is available
-      if (supabase) {
-        const profilePayload = {
-          id: user.id,
-          email: data.email,
-          name: data.name,
-          is_admin: false,
-          verified: false,
-          kyc_status: "not_submitted",
-          kyc_documents: null,
-          created_at: new Date().toISOString(),
-          last_login_at: new Date().toISOString(),
-          total_losses: 0,
-          jackpot_opt_in: false,
-        };
-
-        const { error: profileErr } = await supabase
-          .from(PROFILES_TABLE)
-          .insert(profilePayload);
-
-        if (profileErr) {
-          console.error("Error creating profile:", profileErr);
-        }
-      }
-
+      setUser(mappedUser);
+      setToken(session.access_token);
+      localStorage.setItem("coinkrazy_auth_token", session.access_token);
+      
       setIsLoading(false);
       return true;
-    } catch (error: unknown) {
+    } catch (error) {
       console.error("Registration exception:", error);
-      if (error instanceof Error) {
-        console.error("Error message:", error.message);
-      }
       setIsLoading(false);
       return false;
     }
   };
 
   const logout = async () => {
-    if (supabase) {
-      await supabase.auth.signOut();
-    }
     setUser(null);
     setToken(null);
-    localStorage.removeItem("auth_token");
+    localStorage.removeItem("coinkrazy_auth_token");
     localStorage.removeItem("coinkrazy_auth_user");
     localStorage.removeItem("coinkrazy_auth_session");
-    localStorage.removeItem("coinkrazy_user");
-    localStorage.removeItem("coinkrazy_transactions");
   };
 
   const updateProfile = async (updates: Partial<User>) => {
-    if (!user || !supabase) return;
+    if (!user || !token) return;
 
-    const updateRow: Record<string, any> = {};
-    if (updates.name !== undefined) updateRow.name = updates.name;
-    if (updates.verified !== undefined) updateRow.verified = updates.verified;
-    if (updates.kycStatus !== undefined)
-      updateRow.kyc_status = updates.kycStatus;
-    if (updates.kycDocuments !== undefined)
-      updateRow.kyc_documents = updates.kycDocuments;
-    if (updates.totalLosses !== undefined)
-      updateRow.total_losses = updates.totalLosses;
-    if (updates.jackpotOptIn !== undefined)
-      updateRow.jackpot_opt_in = updates.jackpotOptIn;
-
-    if (Object.keys(updateRow).length === 0) return;
-
-    const { error } = await supabase
-      .from(PROFILES_TABLE)
-      .update(updateRow)
-      .eq("id", user.id);
-
-    if (!error) {
-      const updatedUser = { ...user, ...updates } as User;
+    try {
+      // In a real app, you'd have an /api/auth/profile update endpoint
+      // For now, we update local state and you might want to implement the backend part
+      const updatedUser = { ...user, ...updates };
       setUser(updatedUser);
       localStorage.setItem("coinkrazy_auth_user", JSON.stringify(updatedUser));
-    } else {
+    } catch (error) {
       console.error("Error updating profile:", error);
     }
   };
@@ -442,20 +234,7 @@ export const useAuth = () => {
   return context;
 };
 
-// Safe version of useAuth that returns null if not available instead of throwing
 export const useAuthSafe = () => {
   const context = useContext(AuthContext);
   return context;
-};
-
-export const getAllUsers = async (): Promise<
-  (User & { password?: never })[]
-> => {
-  if (!supabase) return [];
-
-  const { data, error } = await supabase.from(PROFILES_TABLE).select("*");
-  if (error) {
-    console.error("Error fetching users:", error);
-    return [];
-  }
 };

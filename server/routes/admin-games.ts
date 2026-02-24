@@ -50,6 +50,22 @@ async function initializeGamesTables() {
         reason TEXT,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
+
+      CREATE TABLE IF NOT EXISTS game_sessions (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id UUID REFERENCES users(id),
+        game_id VARCHAR(255) NOT NULL,
+        session_token VARCHAR(255) NOT NULL,
+        wager NUMERIC NOT NULL,
+        currency VARCHAR(50) NOT NULL,
+        status VARCHAR(50) DEFAULT 'active',
+        provably_fair_seed TEXT,
+        client_seed TEXT,
+        nonce INTEGER DEFAULT 0,
+        win_amount NUMERIC DEFAULT 0,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        end_time TIMESTAMP
+      );
     `);
   } catch (error) {
     console.error("Error initializing games tables:", error);
