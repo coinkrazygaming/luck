@@ -35,7 +35,16 @@ async function initializeFinancialTables() {
         metadata JSONB,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
+    `);
 
+    // Ensure user_id column exists (in case table existed without it)
+    try {
+      await db.query(`ALTER TABLE transactions ADD COLUMN IF NOT EXISTS user_id UUID REFERENCES users(id)`);
+    } catch (e) {
+      // Ignore if it already exists or if there's another issue we'll catch later
+    }
+
+    await db.query(`
       CREATE TABLE IF NOT EXISTS withdrawals (
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
         user_id UUID REFERENCES users(id),
@@ -46,7 +55,9 @@ async function initializeFinancialTables() {
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         processed_at TIMESTAMP
       );
+    `);
 
+    await db.query(`
       CREATE TABLE IF NOT EXISTS user_balances (
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
         user_id UUID UNIQUE REFERENCES users(id),
@@ -55,11 +66,26 @@ async function initializeFinancialTables() {
         real_money NUMERIC DEFAULT 0,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
-
-      CREATE INDEX IF NOT EXISTS idx_transactions_user_id ON transactions(user_id);
-      CREATE INDEX IF NOT EXISTS idx_withdrawals_user_id ON withdrawals(user_id);
-      CREATE INDEX IF NOT EXISTS idx_withdrawals_status ON withdrawals(status);
     `);
+
+    try {
+      await db.query(`CREATE INDEX IF NOT EXISTS idx_transactions_user_id ON transactions(user_id)`);
+    } catch (e) {
+      console.warn("Could not create index on transactions(user_id):", e.message);
+    }
+
+    try {
+      await db.query(`CREATE INDEX IF NOT EXISTS idx_withdrawals_user_id ON withdrawals(user_id)`);
+    } catch (e) {
+      console.warn("Could not create index on withdrawals(user_id):", e.message);
+    }
+
+    try {
+      await db.query(`CREATE INDEX IF NOT EXISTS idx_withdrawals_status ON withdrawals(status)`);
+    } catch (e) {
+      console.warn("Could not create index on withdrawals(status):", e.message);
+    }
+
   } catch (error) {
     console.error("Error initializing financial tables:", error);
   }

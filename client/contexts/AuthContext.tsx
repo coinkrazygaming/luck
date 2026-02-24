@@ -131,18 +131,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     setIsLoading(true);
     try {
-      const response = await fetch("/api/auth/login", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(credentials),
-      });
-
-      if (!response.ok) {
-        setIsLoading(false);
-        return false;
-      }
-
-    try {
       console.log("[Login] Attempting login for:", credentials.email);
 
       // Call the backend proxy endpoint instead of Supabase directly

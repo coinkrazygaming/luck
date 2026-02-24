@@ -58,53 +58,34 @@ import {
   refreshHandler,
 } from "./routes/auth";
 import { healthHandler } from "./routes/health";
+import { initializeDatabase } from "./lib/db";
+import { initGamesDB } from "./routes/admin-games";
+import { initFinancialDB } from "./routes/admin-financial";
+import { initTournamentsDB } from "./routes/admin-tournaments";
+import { initPackagesDB } from "./routes/admin-packages";
+import { initializeSlotsTable } from "./routes/admin-slots";
 
 export function createServer() {
   const app = express();
 
   // Initialize database
-  initializeDatabase().catch((error) => {
-    console.error("Failed to initialize database:", error);
-  });
-
-  // Initialize games database
-  initGamesDB().catch((error) => {
-    console.error("Failed to initialize games database:", error);
-  });
-
-  // Initialize financial database
-  initFinancialDB().catch((error) => {
-    console.error("Failed to initialize financial database:", error);
-  });
-
-  // Initialize tournaments database
-  initTournamentsDB().catch((error) => {
-    console.error("Failed to initialize tournaments database:", error);
-  });
-
-  // Initialize packages database
-  initPackagesDB().catch((error) => {
-    console.error("Failed to initialize packages database:", error);
-  });
-
-  // Initialize slots database
-  initializeSlotsTable().catch((error) => {
-    console.error("Failed to initialize slots database:", error);
-  });
+  initializeDatabase()
+    .then(() => {
+      // Initialize other databases after main database is ready
+      return Promise.all([
+        initGamesDB(),
+        initFinancialDB(),
+        initTournamentsDB(),
+        initPackagesDB(),
+        initializeSlotsTable(),
+      ]);
+    })
+    .catch((error) => {
+      console.error("Failed to initialize databases:", error);
+    });
 
   // Middleware
   app.use(cors());
-  app.use(express.json());
-  app.use(express.urlencoded({ extended: true }));
-
-  // Authentication routes
-  app.post("/api/auth/register", register);
-  app.post("/api/auth/login", login);
-  app.get("/api/auth/session", getSession);
-  app.post("/api/auth/logout", logout);
-  app.post("/api/auth/profile", updateProfile);
-
-  // Example API routes
   app.get("/api/ping", (_req, res) => {
     const ping = process.env.PING_MESSAGE ?? "ping";
     res.json({ message: ping });
